@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="X-UA-Compatible" content="ie=edge">
+	<title>Document</title>
+</head>
+
+<body>
+	<div id="root"></div>
+</body>
+
+</html>
+<script type="text/javascript">
+	// Virtual Dom 算法实现
+	/**
+	 * @param {String} tag 'div'
+	 * @param {Obejct} props {class: 'item}
+	 * @param {Array} children [Element, 'text]
+	 * @param {String} key option
+	 */
+	class Element {
+		constructor(tag, props, children, key) {
+			this.tag = tag;
+			this.props = props;
+			if (Array.isArray(children)) {
+				this.children = children;
+			} else if (isString(children)) {
+				this.key = children;
+				this.children = null;
+			}
+			if (key) {
+				this.key = key;
+			}
+		}
+		render() {
+			let root = this._createElement(
+				this.tag,
+				this.props,
+				this.children,
+				this.key
+			);
+			document.body.appendChild(root);
+			return root;
+		}
+		create() {
+			return this._createElement(this.tag, this.props, this.children, this.key);
+		}
+		// 创建节点
+		_createElement(tag, props, children, key) {
+			// 通过tag创建节点
+			let el = document.createElement(tag);
+			// 设置节点属性
+			for (const key in props) {
+				if (props.hasOwnProperty(key)) {
+					const value = props[key];
+					el.setAttribute(key, value);
+				}
+			}
+			if (key) {
+				el.setAttribute('key', key);
+			}
+			// 递归添加子节点
+			if (children) {
+				children.forEach(element => {
+					let child;
+					if (element instanceof Element) {
+						child = this._createElement(
+							element.tag,
+							element.props,
+							element.children,
+							element.key
+						);
+					} else {
+						child = document.createTextNode(element);
+					}
+					el.appendChild(child);
+				})
+			}
+			return el;
+		}
+	}
+
+	function isString(value) {
+		return typeof value === 'string'
+	}
+
+	// let a = new Element('div', {id: 'node', class: '11'}, ['text',new Element('div', {id: 'node', class: '11'}, ['text','123'], '132')], '132');
+	// a.render();
+
+
+	// 树的递归
+
+	// 首先来实现树的递归算法， 在实现改算法前， 先来考虑两个节点对比会有几种情况   
+	// 1 新的节点tagName(fiber的tag属性) 或者key和旧的不同， 这种情况需要替换旧的节点， 并且不需要遍历新旧节点的子元素了，因为整个旧节点都被删掉了，
+	// 2 新的节点的 tagName 和 key (可能都没有) 和旧的相同， 开始遍历子节点
+	// 3 没有新节点， 那就什么都不需要做，
+	const StateEnums = {
+		Replace: 'REPLACE',
+		ChangeProps: 'CHANGEPROPS',
+		Remove: 'REMOVE',
+		Insert: 'INSERT',
+		Move: 'MOVE'
+	}
+
+	function diff(oldDomTree, newDomTree) {
+		// 用于记录差异
+		let patches = {};
+		dfs(oldDomTree, newDomTree, 0, patches);
+		return patches;
+	}
+
+	function dfs(oldNode, newNode, index, patches) {
+		// 用于保存在数的更改
+		let curPatches = [];
+		// 需要判断三种情况
+		// 1 没有新的节点 什么都不做
+		// 2 新节点的 tagName 和 key 与旧节点不同，直接替换
+		// 3 新节点 tagName 和 key 与旧节点相同， 需要遍历子节点进行比较
+
+		if (!newNode) {
+		} else if (
+			newNode.tag === oldNode.tag &&
+			newNode.key === oldNode.key
+		) {
+			// 判断属性是否变更
+			let props = diffProps(oldNode.props, newNode.props);
+			if (props.length) curPatches.push({ type: StateEnums.ChangeProps, props });
+			// 遍历子树
+			diffChildren(oldNode.children, newNode.children, index, patches);
+		} else {
+			// 节点不同，需要替换
+			curPatches.push({ type: StateEnums.Replace, node: newNode });
+		}
+
+		if (curPatches.length) {
+			if (patches[index]) {
+				patches[index] = patches[index].concat(curPatches);
+			} else {
+				patches[index] = curPatches;
+			}
+		}
+	}
+
+	// 判断属性的更改
+	// 判断属性的更改也分为三个步骤
+	// 1 遍历旧的属性列表， 查看每个属性是否还存在于新的属性列表中
+	// 2 遍历新的属性列表， 判断两个列表中都存在属性的值是否有变化
+	// 3 在第二步中同时查看是否有属性不存在与旧的属性列表中
+
+	function diffProps(oldProps, newProps) {
+		// 判断 Props 分一下三步骤
+		// 先遍历 oldProps 查看是否存在删除的属性
+		// 然后遍历 newProps 查看是否有属性值被修改
+		// 最后查看是否有属性新增
+		let change = [];
+		for (let key in oldProps) {
+			if (oldProps.hasOwnProperty(key) && !newProps[key]) {
+				change.push({
+					prop: key
+				})
+			}
+		}
+
+		for (let key in newProps) {
+			if (newProps.hasOwnProperty(key)) {
+				const prop = newProps[key];
+				if (oldProps[key] && newProps[key] !== oldProps[key]) {
+					change.push({
+						prop: key,
+						value: prop
+					});
+				} else if (!oldProps[key]) {
+					change.push({
+						prop: key,
+						value: prop
+					});
+				}
+			}
+		}
+		return change;
+	}
+
+
+	// 判断列表差异算法实现
+
+	// 遍历子元素打标识
+	// 1 判断两个列表差异
+	// 2 给节点打上标识
+	function diffChildren(oldChild, newChild, index, patches) {
+		let { changes, list } = ListDiff(oldChild, newChild, index, patches); // 获取子节点的 改变  依旧子节点按照key的排列（必须是有key的节点）
+		if (changes.length) {
+			if (patches[index]) {
+				patches[index] = patches[index].concat(changes);
+			} else {
+				patches[index] = changes;
+			}
+		}
+		// 记录上一个遍历过的节点
+		let last = null;
+		oldChild && oldChild.forEach((item, i) => {
+			let child = item && item.children;
+			if (child) {
+				// 假如子节点中也有子节点
+				// 这里index就是为了确认 当前操作节点 相对 最外层的索引号
+				// 其实是给素有dom 数上的节点添加 索引   但是如果有子节点  它增加的步进 就该是所有 字数的数量再加1
+				index =
+					last && last.children ? index + last.children + 1 : index + 1;
+				let keyIndex = list.indexOf[item.key];
+				let node = newChild[keyIndex];
+				// 子节点也有 子节点 就要比较子节点， 深度优先遍历
+				// 只遍历新旧中都存在的节点， 其他新增或者删除的没必要遍历
+				if (node) {
+					dfs(item, node, index, patches);
+				}
+			} else {
+				// 没有children的节点  它也占一个位置 但不需要比较
+				index += 1;
+			}
+			last = item;
+		})
+	}
+
+	function getKeys(list) {
+		let keys = [], text;
+		list && list.forEach(item => {
+			let key;
+			if (isString(item)) {
+				key = item;
+			} else if (item instanceof Element) {
+				key = item.key;
+			}
+			keys.push(key);
+		})
+		return keys;
+	}
+
+	// 这个算法是这个Virtual Dom中最核心的算法  这里的主要步骤和判断属性差异是类似的，也是分为三步
+	// 1 遍历旧的节点列表， 查看每个节点， 查看每个节点是否还存在于新的节点列表中
+	// 2 遍历新的节点列表， 判断是否有新的节点
+	// 3 在第二步中同时判断节点是否有移动
+	// 此算法值对有 key 的节点处理
+
+	function ListDiff(oldList, newList, index, patches) {
+		// 为了遍历方便， 先取出两个 list 的 所有 keys
+		let oldKeys = getKeys(oldList);
+		let newKeys = getKeys(newList);
+		let changes = [];
+		let list = [];
+		// 用于保存变更后的节点数据
+		// 使用该数组保存后有一下好处
+		// 1 可以正确获得被删除节点索引
+		// 2 交换节点位置只序号操作一遍DOM
+		// 3 用于 diffChildren 函数中的判断，只需要遍历两个树种都存在的节点， 而对于新增或者删除的节点来说， 完全没有必要再去判断一遍
+		oldList.forEach(item => {
+			let key;
+			if (isString(item)) {
+				key = item;
+			} else {
+				key = item.key;
+			}
+			if (newKeys.includes(key)) {
+				list.push(key);
+			} else {
+				list.push(null);
+			}
+		});
+		// 遍历变更后的数组
+		let length = list.length;
+		// 因为删除数组会改变索引
+		// 所以从后向前遍历
+		for (let i = length - 1; i >= 0; i--) {
+			// 判断当前元素是否为空，为空表示需要删除
+			if (!list[i]) {
+				list.splice(i, 1);
+				changes.push({
+					type: StateEnums.Remove,
+					index: i
+				})
+			}
+		}
+
+		// 遍历新列表 判断是否有节点新增或者移动， 
+		// 同时也对 list 左节点新增和移动节点的操作
+		newList && newList.forEach((item, i) => {
+			let key;
+			if (isString(item)) {
+				key = item;
+			} else {
+				key = item.key;
+			}
+			let index = list.indexOf(key);
+			if (!list[key]) {
+				// 没有在list中找到说明是新添加的
+				changes.push({
+					type: StateEnums.Insert,
+					node: item,
+					index: i
+				})
+			} else {
+				// 找到了要对比是否需要移动
+				if (i !== list.indexOf(key)) {
+					changes.push({
+						type: StateEnums.Move,
+						from: index,
+						to: i
+					});
+					move(list, index, i);
+				}
+			}
+		});
+		// changes 是当前树 改变的内容   list 是当前树子节点的顺序
+		return { changes, list };
+	}
+
+
+	// 渲染差异
+	// 通过之前的算法，已经可以知道两个树的差异了，既然知道了差异，就需要局部去更新DOM了，
+	// 下面就看下Virtual Dom 算法的最后一步步骤
+
+	// 这个函数主要两个功能
+	// 1 深度遍历树，将需要做的变更操作的取出来，
+	// 2 局部更新DOM
+
+	let index = 0;
+	function patch(node, patches) {
+		let changes = patches[index];
+		let childNodes = node && node.childNodes;
+		if (!childNodes) {
+			index += 1;
+		}
+		// patches[index] 这个判断不是特别明白
+		if (changes && changes.length && patches[index]) {
+			changeDom(node, changes);
+		}
+		let last = null;
+		if (childNodes && childNodes.length) {
+			childNodes.forEach((item, i) => {
+				index =
+					last && last.children ? index + last.children.length + 1 : index + 1;
+				patch(item, patches);
+				last = item;
+			})
+		}
+	}
+
+	function changeDom(node, changes) {
+		changes &&
+			changes.forEach(change => {
+				let { type } = change;
+				switch (type) {
+					case StateEnums.ChangeProps:
+						let { props } = change;
+						props.forEach(item => {
+							if (item.value) {
+								node.setAttribute(item.prop, item.value);
+							} else {
+								node.removeAttribute(item.prop);
+							}
+						});
+						break;
+					case StateEnums.Remove:
+						node.childNodes[change.index].remove();
+						break;
+					case StateEnums.Insert:
+						let dom;
+						if (isString(change.node)) {
+							dom = document.createTextNode(change.node);
+						} else if (change.node instanceof Element) {
+							dom = change.node.create();
+						}
+						node.insertBefore(dom, node.childNodes[change.index]);
+						break;
+					case StateEnums.Replace:
+						node.parentNode.replaceChild(change.node.create(), node);
+						break;
+					case StateEnums.Move:
+						let fromNode = node.childNodes[change.from];
+						let toNode = node.childNodes[change.to];
+						let cloneFromNode = fromNode.clone(true);
+						let cloneToNode = toNode.clone(true);
+						node.replaceChild(cloneFromNode, toNode);
+						node.replaceChild(cloneToNode, fromNode);
+						break;
+					default:
+						break;
+				}
+			})
+	}
+
+	let test4 = new Element('div', { class: 'my-div' }, ['test4'])
+	let test5 = new Element('ul', { class: 'my-div' }, ['test5'])
+
+	let test1 = new Element('div', { class: 'my-div', id: "test4" }, [test4])
+
+	let test2 = new Element('div', { id: '11' }, [test5, test4])
+
+	let root = test1.render()
+
+	let pathchs = diff(test1, test2)
+	console.log(pathchs)
+
+	setTimeout(() => {
+		console.log('开始更新')
+		patch(root, pathchs)
+		console.log('结束更新')
+	}, 1000)
+
+
+</script>
