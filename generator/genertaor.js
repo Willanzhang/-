@@ -49,6 +49,12 @@ function test() {
   })
 }
 
+// 上面实现这个生成器函数
+function* test() {
+  let a = 1 + 2;
+  yield 2;
+  yield 3;
+}
 
 
 // 使用
