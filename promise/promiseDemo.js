@@ -306,6 +306,58 @@ class NewPromise {
   }
 }
 
+function resolutionProcedureC(promise2, x, resolve, reject) {
+  if (promise2 === x) {
+    return reject(new TypeError('error'));
+  }
+
+  if (x instanceof NewPromise) {
+    if (x.currentState === PENDING) {
+      x.then(function(value) {
+        resolutionProcedureC(promise2, value, resolve, reject);
+      }, reject)
+    } else {
+      x.then(resolve, reject);
+    }
+    return;
+  }
+
+  let called = false;
+  if (x !== null && (typeof x === 'object' || typeof x === 'funciton')) {
+    try {
+      let then = x.then;
+      if (typeof then === 'function') {
+        return then.call(
+          x,
+          value => {
+            if (called) {
+              return;
+            }
+            called = true;
+            resolutionProcedureC(promise2, value, resolve, reject)
+          },
+          reason => {
+            if (called) {
+              return;
+            }
+            called = true;
+            reject(reason);
+          }
+        )
+      } else {
+        resolve(x);
+      }
+    } catch(e) {
+      if (called) {
+        return;
+      }
+      called = true;
+      reject(e);
+    }
+  } else {
+    resolve(x);
+  }
+}
 
 // class Person {
 //   constructor(name, age) {
