@@ -9,6 +9,11 @@
 // 如此，构成了兑现过得原型的原型的原型的链条，知道某个对象的隐式引用为 null, 整个链条终止
 
 
+// 通过覆盖 Object.prototype.__proto__ 我们可以看到，访问普通对象的 __proto__ 触发了 Object.prototype 上的 __proto__ 的 get 方法。
+
+// 因此，普通对象创建时，只需要将它内部的隐式引用指向 Object.prototype 对象，就能兼容 __proto__ 属性访问行为，不需要将原型隐式挂载到对象的 __proto__ 属性。
+
+
 // 两类原型继承方式
 
 // 显式跟隐式的差别：是否由开发者亲自操作。
@@ -59,3 +64,58 @@ function create(proto) {
 	Noop.prototype = proto;
 	return new Noop();
 }
+
+// 显示继承方式  properties 是 class 或者带有 constructor 的属性
+const inherit = (SuperConstructor, properties) => {
+	const { constructor } = properties;
+	
+
+	SubConstrutor = function (...args) {
+		SuperConstructor.call(this, ...args);
+		constructor.call(this, ...args);
+	}
+
+	SubConstrutor.prototype = {
+		...properties,
+		constructor: SubConstrutor
+	}
+
+	// linking !!!链接 子 构造函数的原型是 父构造函数的原型
+	Reflect.setPrototypeOf(
+		SubConstrutor.prototype,
+		SuperConstructor.prototype
+	)
+
+	return SubConstrutor;
+}
+
+// 使用方式类似类
+const Human = inherit(Object, {
+	constructor( { age }) {
+		this.age = age;
+	},
+	showAge() {
+		console.log('age', this.age);
+	}
+})
+
+const User = inherit(Human, {
+	constructor({ firstName, lastName}) {
+		this.firstName = firstName,
+		this.lastName = lastName;
+	},
+	showName() {
+		console.log( this,'name:', this.firstName, this.lastName);
+	}
+})
+
+const user = new User({
+	age: 18,
+	firstName: 'william',
+	lastName: 'zhang'
+})
+
+console.log('user', user);
+
+
+// 从数据结构和算法的角度理解 prototype 和 class
