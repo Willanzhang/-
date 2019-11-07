@@ -117,5 +117,17 @@ const user = new User({
 
 console.log('user', user);
 
-
 // 从数据结构和算法的角度理解 prototype 和 class
+// 就是通过next 连接的单项链表
+Object.defineProperty(Object.prototype, 'next', {
+	get() {
+		let next = Object.getPrototypeOf('this');
+		if (next === Object.prototype) {
+			return null;
+		}
+		return next;
+	},
+	set(value) {
+		return Object.setPrototypeOf( this,value);
+	}
+})
